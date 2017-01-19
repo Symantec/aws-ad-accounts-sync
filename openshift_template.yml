@@ -1,0 +1,59 @@
+---
+  kind: "Template"
+  apiVersion: "v1"
+  metadata:
+    name: "aws-ad-accounts-sync"
+  objects:
+    -
+      kind: "DeploymentConfig"
+      apiVersion: "v1"
+      metadata:
+        name: "aws-ad-accounts-sync"
+        labels:
+          template: "aws-ad-accounts-sync-template"
+      spec:
+        strategy:
+          type: "Recreate"
+        triggers:
+          -
+            type: "ConfigChange"
+        replicas: 1
+        selector:
+          name: "aws-ad-accounts-sync"
+        template:
+          metadata:
+            labels:
+              name: "aws-ad-accounts-sync"
+          spec:
+            containers:
+              -
+                command:
+                  - sh
+                  - -c
+                  - |
+                     . /root/source
+                     mv /root/skew-config /root/.skew
+                     mkdir /root/.aws && mv /root/aws-credentials /root/.aws/credentials
+                     exec /src/aws_ad_accounts_sync.py
+                name: "aws-ad-accounts-sync-container"
+                image: "${image_url}"
+                volumeMounts:
+                 - name: secrets
+                   mountPath: /root
+                resources:
+                  requests:
+                    memory: "100Mi"
+                    cpu: "20m"
+                  limits:
+                    memory: "100Mi"
+                    cpu: "20m"
+            volumes:
+             -
+               name: secrets
+               secret:
+                 secretName: aws-ad-secrets
+              
+  parameters:
+    -
+      name: "image_url"
+      value: "{OPENSHIFT_URL}/aws_tools/aws-ad-accounts-sync"
