@@ -194,6 +194,21 @@ def detach_managed_user_policies(iam, user_name):
   return action_taken
 
 
+def delete_user_mfa_devices(iam, user_name):
+  action_taken = False
+
+  def delete_user_mfa_device(iam, user_name, serial_number):
+    iam.deactivate_mfa_device(UserName=user_name, SerialNumber=serial_number)
+  while True:
+    user_mfa_devices = iam.list_mfa_devices(UserName=user_name)
+    for user_mfa_device in user_mfa_devices['MFADevices']:
+      delete_user_mfa_device(iam, user_name, user_mfa_device['SerialNumber'])
+      action_taken = True
+    if not user_mfa_devices['IsTruncated']:
+      break
+  return action_taken
+
+
 def check_if_active_and_disable_user(iam, user_name, user_access_key_metadata, account):
   changed_attributes = []
   if disable_login_profile(iam, user_name):
@@ -222,6 +237,8 @@ def delete_aws_account(iam, user_name, account):
     changed_attributes.append('inline user policy attachment(s)')
   if detach_managed_user_policies(iam, user_name):
     changed_attributes.append('managed user policy attachment(s)')
+  if delete_user_mfa_devices(iam, user_name):
+    changed_attributes.append('user mfa devices')
   iam.delete_user(UserName=user_name)
   delete_message     = 'user: %s account: %s has been deleted after no activity for %s days.' % (user_name, account, aws_delete_grace_period)
   attributes_message = ' These attributes were deleted: %s' % str(changed_attributes)
