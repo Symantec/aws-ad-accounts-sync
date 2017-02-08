@@ -1,4 +1,4 @@
-"""vp_owner_tagging.py makes an org chart from AD, tags AWS resources with vp_owner."""
+#!/usr/bin/env python
 
 import json
 import ldap
