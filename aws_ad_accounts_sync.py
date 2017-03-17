@@ -218,7 +218,7 @@ def check_if_active_and_disable_user(iam, user_name, user_access_key_metadata, a
   if disable_access_keys(iam, user_name, user_access_key_metadata):
     changed_attributes.append('access key(s)')
   if changed_attributes:
-    message = 'user: %s account: %s has been disabled. These attributes were disabled: %s' % (user_name, account, str(changed_attributes))
+    message = 'account: %s - user: %s has been disabled. These attributes were disabled: %s' % (account, user_name, str(changed_attributes))
     logging.info(message)
     message_slack(message)
 
@@ -240,7 +240,7 @@ def delete_aws_account(iam, user_name, account):
   if delete_user_mfa_devices(iam, user_name):
     changed_attributes.append('user mfa devices')
   iam.delete_user(UserName=user_name)
-  delete_message     = 'user: %s account: %s has been deleted after no activity for %s days.' % (user_name, account, aws_delete_grace_period)
+  delete_message     = 'account: %s - user: %s has been deleted after no activity for %s days.' % (account, user_name, aws_delete_grace_period)
   attributes_message = ' These attributes were deleted: %s' % str(changed_attributes)
   message            = delete_message.ljust(70, ' ') + attributes_message
   message_slack(message)
