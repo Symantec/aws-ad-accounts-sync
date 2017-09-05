@@ -56,4 +56,4 @@
   parameters:
     -
       name: "image_url"
-      value: "{OPENSHIFT_URL}/aws_tools/aws-ad-accounts-sync"
+      value: "registry.paas.symcpe.com:443/aws_tools/aws-ad-accounts-sync"
