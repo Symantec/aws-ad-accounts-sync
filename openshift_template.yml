@@ -31,15 +31,15 @@
                   - sh
                   - -c
                   - |
-                     . /root/source
-                     mv /root/skew-config /root/.skew
-                     mkdir /root/.aws && mv /root/aws-credentials /root/.aws/credentials
+                     . /secrets/source
+                     ln -s /secrets/skew-config /root/.skew
+                     mkdir /root/.aws && ln -s /secrets/aws-credentials /root/.aws/credentials
                      exec /src/aws_ad_accounts_sync.py
                 name: "aws-ad-accounts-sync-container"
                 image: "${image_url}"
                 volumeMounts:
                  - name: secrets
-                   mountPath: /root
+                   mountPath: /secrets
                 resources:
                   requests:
                     memory: "100Mi"
@@ -56,4 +56,4 @@
   parameters:
     -
       name: "image_url"
-      value: "registry.paas.symcpe.com:443/aws_tools/aws-ad-accounts-sync"
+      value: "{DOCKER_REGISTRY_URL}/aws_tools/aws-ad-accounts-sync:latest"

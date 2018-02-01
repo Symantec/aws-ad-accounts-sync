@@ -11,19 +11,19 @@ from datetime import datetime, timedelta
 from skew import scan
 from skew.config import get_config
 
-logger                     = logging.getLogger('aws_ad_accounts_sync')
-aws_ad_sync_run_interval   = int(os.environ.get('AWS_AD_SYNC_RUN_INTERVAL', 1800))
-aws_max_delete_failsafe    = float(os.environ.get('AWS_MAX_DELETE_FAILSAFE', 0.2))
-slack_aws_token            = os.environ.get('SLACK_AWS_TOKEN')
-slack_aws_channel          = os.environ.get('SLACK_AWS_CHANNEL', '#general')
-slack_icon_emoji           = os.environ.get('SLACK_ICON_EMOJI', ':scream_cat:')
+logger                       = logging.getLogger('aws_ad_accounts_sync')
+aws_ad_sync_run_interval     = int(os.environ.get('AWS_AD_SYNC_RUN_INTERVAL', 1800))
+aws_max_delete_failsafe      = float(os.environ.get('AWS_MAX_DELETE_FAILSAFE', 0.2))
+slack_aws_token              = os.environ.get('SLACK_AWS_TOKEN')
+slack_aws_channel            = os.environ.get('SLACK_AWS_CHANNEL', '#general')
+slack_icon_emoji             = os.environ.get('SLACK_ICON_EMOJI', ':scream_cat:')
 # If the user is a service account, they get skipped. There is a different process to deal with service accounts.
-aws_service_account_prefix = os.environ.get('AWS_SERVICE_ACCOUNT_PREFIX', 'serviceaccount-')
+aws_service_account_prefixes = ('auto-', 'kms_key_recovery_')
 # This should be in days, after a user is disabled, there will be this many days since their
 # access keys were used for when they get deleted.
-aws_delete_grace_period    = os.environ.get('AWS_DELETE_GRACE_PERIOD', '30')
+aws_delete_grace_period      = os.environ.get('AWS_DELETE_GRACE_PERIOD', '30')
 # '{"whitelist_user_1": true, "whitelist_user_2": true }'
-aws_users_whitelist        = json.loads(os.environ.get('AWS_USERS_WHITELIST'))
+aws_users_whitelist          = json.loads(os.environ.get('AWS_USERS_WHITELIST'))
 
 
 def get_all_aws_users():
@@ -50,7 +50,7 @@ def message_slack(message):
 def filter_out_aws_service_accounts(resources):
   human_aws_accounts = []
   for resource in resources:
-    if not resource['UserName'].startswith(aws_service_account_prefix):
+    if not resource['UserName'].startswith(aws_service_account_prefixes):
       human_aws_accounts.append(resource)
   return human_aws_accounts
 
