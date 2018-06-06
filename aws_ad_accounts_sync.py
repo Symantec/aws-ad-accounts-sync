@@ -18,7 +18,7 @@ slack_aws_token              = os.environ.get('SLACK_AWS_TOKEN')
 slack_aws_channel            = os.environ.get('SLACK_AWS_CHANNEL', '#general')
 slack_icon_emoji             = os.environ.get('SLACK_ICON_EMOJI', ':scream_cat:')
 # If the user is a service account, they get skipped. There is a different process to deal with service accounts.
-aws_service_account_prefixes = ('auto-', 'kms_key_recovery_')
+aws_service_account_prefixes = ('auto-')
 # This should be in days, after a user is disabled, there will be this many days since their
 # access keys were used for when they get deleted.
 aws_delete_grace_period      = os.environ.get('AWS_DELETE_GRACE_PERIOD', '30')

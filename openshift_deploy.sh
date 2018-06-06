@@ -55,8 +55,8 @@ function oc_sync_secrets() {
     oc create secret generic $oc_secret_name
   fi
   # check if the secret has changed locally, if so update it.
-  server_secret_md5=$(oc export secrets $oc_secret_name|grep aws-secrets.yml|awk '{print $2}'|base64 --decode|md5)
-  local_secret_md5=$(md5 < $oc_secret_file)
+  server_secret_md5=$(oc export secrets $oc_secret_name|grep aws-secrets.yml|awk '{print $2}'|base64 --decode|md5sum)
+  local_secret_md5=$(md5sum < $oc_secret_file)
   if [ "$server_secret_md5" != "$local_secret_md5" ]; then
     oc delete secret $oc_secret_name &> /dev/null
     oc create secret generic $oc_secret_name --from-file=$oc_secret_file &> /dev/null
