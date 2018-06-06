@@ -67,7 +67,7 @@ function oc_sync_secrets() {
 }
 
 function docker_tag_image() {
-  if ! docker tag "$app_name" "$DOCKER_REGISTRY_URL"/"$docker_registry_directory"/"$app_name"; then
+  if ! sudo docker tag "$app_name" "$DOCKER_REGISTRY_URL"/"$docker_registry_directory"/"$app_name"; then
     log_stdout "Failed to tag the docker image $DOCKER_REGISTRY_URL/$docker_registry_directory/$app_name"
     exit 1
   else
@@ -77,7 +77,7 @@ function docker_tag_image() {
 
 function docker_build_image() {
   docker_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-  if ! docker build -t "$app_name":latest "$docker_dir"/ &> "$docker_build_logfile"; then
+  if ! sudo docker build -t "$app_name":latest "$docker_dir"/ &> "$docker_build_logfile"; then
     log_stdout "Failed to build the docker image. Check the log file $docker_build_logfile"
     exit 1
   else
@@ -86,7 +86,7 @@ function docker_build_image() {
 }
 
 function docker_push_image() {
-  if ! only_print_stdout_on_fail docker push "$DOCKER_REGISTRY_URL/$docker_registry_directory/$app_name"; then
+  if ! only_print_stdout_on_fail sudo docker push "$DOCKER_REGISTRY_URL/$docker_registry_directory/$app_name"; then
     log_stdout "Failed to push the docker image to the registry"
     exit 1
   else
@@ -116,7 +116,7 @@ bash_validate_variables
 log_stdout "Starting deployment of $app_name to $OPENSHIFT_URL"
 oc_login
 oc_switch_project
-oc_sync_secrets
+#oc_sync_secrets
 docker_build_image
 docker_tag_image
 docker_push_image
