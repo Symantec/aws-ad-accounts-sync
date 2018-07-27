@@ -223,6 +223,15 @@ def check_if_active_and_disable_user(iam, user_name, user_access_key_metadata, a
     message_slack(message)
 
 
+def delete_user_permissions_boundary(iam, user_name):
+    action_taken = False
+    aws_user = iam.get_user(UserName=user_name)
+    if 'PermissionsBoundary' in aws_user['User']:
+        iam.delete_user_permissions_boundary(UserName=user_name)
+        action_taken = True
+    return action_taken
+
+
 def delete_aws_account(iam, user_name, account):
   changed_attributes = []
   if delete_user_ssh_keys(iam, user_name):
@@ -239,6 +248,9 @@ def delete_aws_account(iam, user_name, account):
     changed_attributes.append('managed user policy attachment(s)')
   if delete_user_mfa_devices(iam, user_name):
     changed_attributes.append('user mfa devices')
+  if delete_user_permissions_boundary(iam, user_name):
+    changed_attributes.append('permissions boundary')
+
   iam.delete_user(UserName=user_name)
   delete_message     = 'account: %s - user: %s has been deleted after no activity for %s days.' % (account, user_name, aws_delete_grace_period)
   attributes_message = ' These attributes were deleted: %s' % str(changed_attributes)
