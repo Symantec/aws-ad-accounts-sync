@@ -1,11 +1,7 @@
-# Automatically disable/delete AWS users when they are inactive in active directory
+# Automatically disable/delete AWS users when they are inactive in company directory (AD or LDAP)
 
 ### Installation
-  - For deploying to openshift, cp -r secrets.example secrets, edit the secrets properly
-  - oc new-project aws-ad-accounts-sync
-  - oc create secret generic aws-ad-secrets --from-file=secrets
-  - run ./deploy.sh to deploy to openshift
-  - Setup the IAM policy as a service account for each user (policy below)
+  - deploy this through aws lambda
 
 ### AWS IAM Policy for the service account
 ```
@@ -36,9 +32,6 @@
     ]
 }
 ```
-
-### TODO
-- get_account_authorization_details / parallelize to make everything faster
 
 License
 ----

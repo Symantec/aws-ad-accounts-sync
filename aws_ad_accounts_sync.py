@@ -1,37 +1,37 @@
 #!/usr/bin/env python
 
 import boto3
+import config
 import json
 import logging
 import os
 import requests
-import time
-from ad_corp import get_all_active_ad_users
+from ad_corp import CompanyDirectory
 from datetime import datetime, timedelta
-from skew import scan
-from skew.config import get_config
+from ldap3.utils.log import set_library_log_activation_level
 
 logger                       = logging.getLogger('aws_ad_accounts_sync')
-aws_ad_sync_run_interval     = int(os.environ.get('AWS_AD_SYNC_RUN_INTERVAL', 1800))
-aws_max_delete_failsafe      = float(os.environ.get('AWS_MAX_DELETE_FAILSAFE', 0.2))
-slack_aws_token              = os.environ.get('SLACK_AWS_TOKEN')
-slack_aws_channel            = os.environ.get('SLACK_AWS_CHANNEL', '#general')
-slack_icon_emoji             = os.environ.get('SLACK_ICON_EMOJI', ':scream_cat:')
+aws_ad_sync_run_interval     = 1800
+aws_max_delete_failsafe      = config.aws_max_delete_failsafe
+slack_aws_token              = config.slack_aws_token
+slack_aws_channel            = config.slack_aws_channel
+slack_icon_emoji             = config.slack_icon_emoji
 # If the user is a service account, they get skipped. There is a different process to deal with service accounts.
 aws_service_account_prefixes = ('auto-')
 # This should be in days, after a user is disabled, there will be this many days since their
 # access keys were used for when they get deleted.
-aws_delete_grace_period      = os.environ.get('AWS_DELETE_GRACE_PERIOD', '30')
+aws_delete_grace_period      = config.aws_delete_grace_period
 # '{"whitelist_user_1": true, "whitelist_user_2": true }'
-aws_users_whitelist          = json.loads(os.environ.get('AWS_USERS_WHITELIST'))
+aws_users_whitelist          = config.aws_users_whitelist
+aws_role_name                = 'aws-iam-user-reaper-role'
 
 
-def get_all_aws_users():
-  arn = scan('arn:aws:iam::*:user/*')
-  resources = []
-  for resource in arn:
-    resources.append(resource.data)
-  return resources
+def get_all_aws_users(iam):
+  all_aws_users = []
+  paginator = iam.get_paginator('list_users')
+  for aws_users in paginator.paginate():
+      all_aws_users = all_aws_users + aws_users['Users']
+  return all_aws_users
 
 
 def message_slack(message):
@@ -48,17 +48,11 @@ def message_slack(message):
 
 
 def filter_out_aws_service_accounts(resources):
-  human_aws_accounts = []
+  human_aws_users = []
   for resource in resources:
     if not resource['UserName'].startswith(aws_service_account_prefixes):
-      human_aws_accounts.append(resource)
-  return human_aws_accounts
-
-
-def get_arn_account_profile_name(arn):
-  config = get_config()
-  account_number = arn.split(':')[4]
-  return config['accounts'][account_number]['profile']
+      human_aws_users.append(resource)
+  return human_aws_users
 
 
 def delete_user_ssh_keys(iam, user_name):
@@ -151,8 +145,13 @@ def disable_login_profile(iam, user_name):
     if login_profile:
       iam.delete_login_profile(UserName=user_name)
       return True
-  except:
-    pass
+  except Exception as error:
+    # for some silly reason, this get_login_profile api call
+    # returns an error, instead of "False", like the other API calls. :(
+    if type(error) == iam.exceptions.NoSuchEntityException:
+        return False
+    else:
+        logger.exception(error)
 
 
 def disable_access_keys(iam, user_name, user_access_key_metadata):
@@ -209,7 +208,7 @@ def delete_user_mfa_devices(iam, user_name):
   return action_taken
 
 
-def check_if_active_and_disable_user(iam, user_name, user_access_key_metadata, account):
+def check_if_active_and_disable_user(iam, user_name, user_access_key_metadata, account_id, account_name):
   changed_attributes = []
   if disable_login_profile(iam, user_name):
     changed_attributes.append('login profile')
@@ -218,8 +217,8 @@ def check_if_active_and_disable_user(iam, user_name, user_access_key_metadata, a
   if disable_access_keys(iam, user_name, user_access_key_metadata):
     changed_attributes.append('access key(s)')
   if changed_attributes:
-    message = 'account: %s - user: %s has been disabled. These attributes were disabled: %s' % (account, user_name, str(changed_attributes))
-    logging.info(message)
+    message = 'account id: %s - account name: %s - user: %s has been disabled. These attributes were disabled: %s' % (account_id, account_name, user_name, str(changed_attributes))
+    logger.info(message)
     message_slack(message)
 
 
@@ -232,7 +231,7 @@ def delete_user_permissions_boundary(iam, user_name):
     return action_taken
 
 
-def delete_aws_account(iam, user_name, account):
+def delete_aws_user_account(iam, user_name, account_id, account_name):
   changed_attributes = []
   if delete_user_ssh_keys(iam, user_name):
     changed_attributes.append('ssh key(s)')
@@ -252,50 +251,91 @@ def delete_aws_account(iam, user_name, account):
     changed_attributes.append('permissions boundary')
 
   iam.delete_user(UserName=user_name)
-  delete_message     = 'account: %s - user: %s has been deleted after no activity for %s days.' % (account, user_name, aws_delete_grace_period)
+  delete_message     = 'account id: %s - account name: %s - user: %s has been deleted after no activity for %s days.' % (account_id, account_name, user_name, aws_delete_grace_period)
   attributes_message = ' These attributes were deleted: %s' % str(changed_attributes)
   message            = delete_message.ljust(70, ' ') + attributes_message
   message_slack(message)
-  logging.info(message)
+  logger.info(message)
+
+
+def get_sts_iam_object(sts_client, role_arn, role_session_name):
+    try:
+        assumed_role_object = sts_client.assume_role(RoleArn=role_arn, RoleSessionName=role_session_name)
+        credentials = assumed_role_object['Credentials']
+        return boto3.client(
+          'iam',
+          aws_access_key_id = credentials['AccessKeyId'],
+          aws_secret_access_key = credentials['SecretAccessKey'],
+          aws_session_token = credentials['SessionToken'],
+        )
+    except Exception as error:
+        logger.exception(error)
+        logger.exception(role_arn)
+        raise Exception(error)
 
 
 def sync_aws_ad():
-  logger.info('Looking for AWS users to delete that do not exist or are not active in AD')
-  human_aws_accounts      = filter_out_aws_service_accounts(get_all_aws_users())
-  active_ad_users         = get_all_active_ad_users()
-  aws_users_to_be_deleted = []
+  logger.debug('Looking for AWS users to delete that do not exist or are not active in AD')
 
-  for human_aws_account in human_aws_accounts:
-    # users on the whitelist will never be disabled or deleted in anyway.
-    if human_aws_account['UserName'] in aws_users_whitelist:
-      continue
-    if human_aws_account['UserName'] not in active_ad_users:
-      aws_users_to_be_deleted.append(human_aws_account)
+  company_directory = CompanyDirectory(config, logger)
+  active_ad_users = company_directory.get_all_ldap_users()
+  aws_accounts = config.aws_accounts
+  sts_client = boto3.client('sts')
 
-  percent_aws_users_deleted = float(len(aws_users_to_be_deleted)) / len(human_aws_accounts)
-  # raise exception if we try to delete too many users as a failsafe.
-  if percent_aws_users_deleted > aws_max_delete_failsafe:
-    exception_msg = 'No users were deleted. %.1f percent to be deleted is beyond the acceptable threshold: %.1f' % (percent_aws_users_deleted * 100, aws_max_delete_failsafe * 100)
-    raise Exception(exception_msg)
+  for aws_account in aws_accounts:
+      aws_account_debug_msg = 'Checking account %s for users that no longer work here.' % aws_account[0]
+      logger.debug(aws_account_debug_msg)
+      account_name = aws_account[0]
+      account_id = aws_account[1]
+      role_arn = 'arn:aws:iam::%s:role/%s' % (account_id, aws_role_name)
+      role_session_name = '%s_aws_reaper' % account_id
+      iam = get_sts_iam_object(sts_client, role_arn, role_session_name)
+      aws_users_to_be_deleted = []
+      all_aws_users = get_all_aws_users(iam)
+      logger.debug(all_aws_users)
+      human_aws_users = filter_out_aws_service_accounts(all_aws_users)
+      for human_aws_account in human_aws_users:
+        # users on the whitelist will never be disabled or deleted in anyway.
+        if human_aws_account['UserName'] in aws_users_whitelist:
+          continue
+        if human_aws_account['UserName'] not in active_ad_users:
+          aws_users_to_be_deleted.append(human_aws_account)
 
-  # After the failsafe is over, go through and disable / delete all the users
-  for aws_user_to_be_deleted in aws_users_to_be_deleted:
-    account                  = get_arn_account_profile_name(aws_user_to_be_deleted['Arn'])
-    session                  = boto3.Session(profile_name=account)
-    iam                      = session.client('iam')
-    user_name                = aws_user_to_be_deleted['UserName']
-    user_access_key_metadata = iam.list_access_keys(UserName=user_name)
-    check_if_active_and_disable_user(iam, user_name, user_access_key_metadata, account)
-    if not user_keys_active_recently(iam, user_name, user_access_key_metadata, days_since_active=int(aws_delete_grace_period)):
-      delete_aws_account(iam, user_name, account)
+      percent_aws_users_deleted = float(len(aws_users_to_be_deleted)) / len(human_aws_users)
+      # raise exception if we try to delete too many users as a failsafe.
+      if percent_aws_users_deleted > aws_max_delete_failsafe:
+        exception_msg = 'No users were deleted. %s.1f percent to be deleted is beyond the acceptable threshold: %s.1f' % (percent_aws_users_deleted * 100, aws_max_delete_failsafe * 100)
+        raise Exception(exception_msg)
+
+      # After the failsafe is over, go through and disable / delete all the users
+      for aws_user_to_be_deleted in aws_users_to_be_deleted:
+        delete_users_debug_msg = 'Deleting %s from account %s' % (aws_user_to_be_deleted, aws_account[1])
+        logger.debug(delete_users_debug_msg)
+        user_name                = aws_user_to_be_deleted['UserName']
+        user_access_key_metadata = iam.list_access_keys(UserName=user_name)
+        check_if_active_and_disable_user(iam, user_name, user_access_key_metadata, account_id, account_name)
+        if not user_keys_active_recently(iam, user_name, user_access_key_metadata, days_since_active=int(aws_delete_grace_period)):
+          delete_aws_user_account(iam, user_name, account_id, account_name)
 
 
-if __name__ == '__main__':
-  logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-  logging.getLogger('requests').setLevel(logging.ERROR)
-  logging.getLogger('botocore').setLevel(logging.ERROR)
-  error_counter = 0
-  while True:
+def set_log_level():
+    if os.environ.get('DEBUG'):
+        log_level = logging.DEBUG
+        logging.getLogger('botocore').setLevel(log_level)
+    else:
+        logging.getLogger('botocore').setLevel(logging.ERROR)
+        log_level = logging.INFO
+    logger.setLevel(log_level)
+    logging.basicConfig(level=log_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logging.getLogger('requests').setLevel(log_level)
+    set_library_log_activation_level(log_level)
+
+
+# note, these two input parameters are required by lambda, they're not used.
+def main(aws_lambda_1, aws_lambda_2):
+    set_log_level()
+    error_counter = 0
+
     try:
       sync_aws_ad()
       error_counter = 0
@@ -307,6 +347,6 @@ if __name__ == '__main__':
         slack_error = '```This exception is being sent to slack since it is the 4th one is a row. %s```' % error
         message_slack(slack_error)
 
-    sleep_message = 'Sleeping for %s minutes' % str(int(aws_ad_sync_run_interval) / 60)
-    logger.info(sleep_message)
-    time.sleep(aws_ad_sync_run_interval)
+
+if __name__ == '__main__':
+  main('', '')

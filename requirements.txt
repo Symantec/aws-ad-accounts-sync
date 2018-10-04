@@ -1,0 +1,4 @@
+requests
+# boto3 comes included in python lambda by default, but for dev testing on ec2, you need it.
+# boto3
+ldap3
