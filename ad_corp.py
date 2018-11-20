@@ -1,6 +1,14 @@
 from ldap3 import Server, Connection, AUTO_BIND_NO_TLS, SUBTREE
 
 
+"""
+CompanyDirectory gets instantiated from aws_ad_accounts_sync.py.
+It uses an ldap3 generator to paginate all of the users from an LDAP tree.
+It pulls out the samaccountnames from the users and puts that information
+inside a simple hashmap so it can be looked up later.
+"""
+
+
 class CompanyDirectory(object):
 
     def __init__(self, config, logger):
