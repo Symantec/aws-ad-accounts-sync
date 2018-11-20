@@ -1,0 +1,19 @@
+ldap_url = 'ldaps://ldap.example.com'
+ldap_port = 636
+ldap_basedn = 'ou=people,dc=example,dc=com'
+ldap_binddn = 'EXAM\\user1'
+ldap_bindpw = 'pass'
+ldap_search_filter = '(&(sAMAccountName=*)(|(extensionAttribute4=L)(extensionAttribute4=A)))'
+ldap_searchreq_attrlist = ['sAMAccountName']
+ldap_cache_time = 86400
+slack_aws_channel = 'Channelid'
+slack_aws_token = 'token'
+slack_icon_emoji = ':reaper:'
+aws_service_account_prefix = 'auto-'
+aws_delete_grace_period = '30'
+aws_users_whitelist = {'testuserIdonotwanttodelete': True }
+aws_max_delete_failsafe = 0.2
+aws_accounts = [
+    ('account1', '831234'),
+    ('account2', '171234'),
+]

@@ -1,5 +1,12 @@
+.DS_Store
+.scannerwork/*
+config.py
+py3*
 *log
 *swp
 *pyc
+certifi
 secrets
 source
+bundle
+bundle.zip
